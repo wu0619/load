@@ -5,6 +5,7 @@ from joblib import load
 from scipy.signal import savgol_filter
 from sklearn.metrics import mean_squared_error
 
+import matplotlib.pyplot as plt
 
 class Model:
     """
@@ -34,69 +35,37 @@ class Model:
         self.xgboost3.load_model('xgboost3.model')
 
         self.K_label = None
+        self.X = None
         self.y = None
 
-    def predict(self, X: np.ndarray):
-        self.y = np.empty(shape=(X.shape[0], 96))
+    def predict(self, X: list):
+        self.X = np.array(X)
+        self.y = np.empty(shape=(self.X.shape[0], 96))
 
-        if not isinstance(X, np.ndarray):
-            raise TypeError("Expected X to be a NDArray.")
-
-        if X.ndim != 2:
-            raise ValueError(f"n_dim of X must be 2, but get {X.ndim}.")
-
-        X_scaled = self.scaler.transform(X)
+        X_scaled = self.scaler.transform(self.X.reshape(-1, 1)).reshape(1, -1)
         X_label = self.kmeans.predict(X_scaled)
-        k0 = np.where(X_label == 0)
-        k1 = np.where(X_label == 1)
-        k2 = np.where(X_label == 2)
-        k3 = np.where(X_label == 3)
 
-        X_0 = X_scaled[k0]
-        X_1 = X_scaled[k1]
-        X_2 = X_scaled[k2]
-        X_3 = X_scaled[k3]
+        X_filtered = np.array(savgol_filter(X_scaled, 10, 4))
+        X_residual = X_scaled - X_filtered
 
-        X_filtered_0 = np.array(savgol_filter(X_0, 10, 4))
-        X_filtered_1 = np.array(savgol_filter(X_1, 10, 4))
-        X_filtered_2 = np.array(savgol_filter(X_2, 10, 4))
-        X_filtered_3 = np.array(savgol_filter(X_3, 10, 4))
-
-        X_residual_0 = X_0 - X_filtered_0
-        X_residual_1 = X_1 - X_filtered_1
-        X_residual_2 = X_2 - X_filtered_2
-        X_residual_3 = X_3 - X_filtered_3
-
-        pred_svr0 = self.svr0.predict(X_filtered_0)
-        pred_svr1 = self.svr1.predict(X_filtered_1)
-        pred_svr2 = self.svr2.predict(X_filtered_2)
-        pred_svr3 = self.svr3.predict(X_filtered_3)
-
-        pred_xgboost0 = self.xgboost0.predict(X_residual_0)
-        pred_xgboost1 = self.xgboost1.predict(X_residual_1)
-        pred_xgboost2 = self.xgboost2.predict(X_residual_2)
-        pred_xgboost3 = self.xgboost3.predict(X_residual_3)
-
-        y_pred_0 = pred_svr0 + pred_xgboost0
-        y_pred_1 = pred_svr1 + pred_xgboost1
-        y_pred_2 = pred_svr2 + pred_xgboost2
-        y_pred_3 = pred_svr3 + pred_xgboost3
-
-        self.y[k0] = y_pred_0
-        self.y[k1] = y_pred_1
-        self.y[k2] = y_pred_2
-        self.y[k3] = y_pred_3
-
-        return self.y
-
-def main():
-    X = pd.read_csv('testing.csv', header=None, index_col=False).to_numpy()
-    y = pd.read_csv('ans.csv', header=None, index_col=False).to_numpy()
-    model = Model()
-    pred = model.predict(X)
-    print(pred)
-    mse = mean_squared_error(pred, y)
-    print('mse:', mse)
-
-if __name__=='__main__':
-    main()
+        if X_label == 0:
+            pred_svr = self.svr0.predict(X_filtered)
+            pred_xgboost = self.xgboost0.predict(X_residual)
+            y_pred = pred_svr + pred_xgboost
+            self.y = self.scaler.inverse_transform(y_pred)
+        elif X_label == 1:
+            pred_svr = self.svr1.predict(X_filtered)
+            pred_xgboost = self.xgboost1.predict(X_residual)
+            y_pred = pred_svr + pred_xgboost
+            self.y = self.scaler.inverse_transform(y_pred)
+        elif X_label == 2:
+            pred_svr = self.svr2.predict(X_filtered)
+            pred_xgboost = self.xgboost2.predict(X_residual)
+            y_pred = pred_svr + pred_xgboost
+            self.y = self.scaler.inverse_transform(y_pred)
+        elif X_label == 3:
+            pred_svr = self.svr3.predict(X_filtered)
+            pred_xgboost = self.xgboost3.predict(X_residual)
+            y_pred = pred_svr + pred_xgboost
+            self.y = self.scaler.inverse_transform(y_pred)
+        return self.y[0]
